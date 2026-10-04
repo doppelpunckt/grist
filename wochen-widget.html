@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wochenübersicht</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root {
+    --bg: #f6f7f4; --card: #ffffff; --ink: #1d2a26; --muted: #66756f;
+    --line: #dde3df; --accent: #1f6f5c; --accent-ink: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151a18; --card: #1f2623; --ink: #e8eeeb; --muted: #93a39c;
+            --line: #2f3a36; --accent: #4fb89d; --accent-ink: #0d1512; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { padding: 10px; padding-bottom: env(safe-area-inset-bottom, 10px); }
+  .nav { display: flex; gap: 8px; align-items: stretch; margin-bottom: 12px; }
+  .nav button { width: 48px; font-size: 22px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); border-radius: 10px; }
+  .nav button:active { background: var(--accent); color: var(--accent-ink); }
+  .nav select { flex: 1; min-width: 0; font-size: 17px; padding: 12px;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: var(--card); color: var(--ink); }
+  h2 { font-size: 15px; font-weight: 600; margin: 16px 2px 6px; color: var(--muted); }
+  .scroll { overflow-x: auto; background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  th, td { padding: 9px 12px; text-align: right; white-space: nowrap;
+    border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-weight: 600; color: var(--muted); font-size: 13px; }
+  tr:last-child td { border-bottom: 0; }
+  tfoot td { font-weight: 700; border-top: 2px solid var(--accent); }
+  .empty { padding: 20px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="nav">
+  <button id="prev" aria-label="Vorherige Woche">‹</button>
+  <select id="week" aria-label="Woche wählen"></select>
+  <button id="next" aria-label="Nächste Woche">›</button>
+</div>
+<div id="out"><div class="empty">Spalten zuordnen (rechtes Panel) …</div></div>
+
+<script>
+let rows = [], labels = [], weeks = [], current = null;
+const $ = id => document.getElementById(id);
+
+grist.ready({
+  requiredAccess: 'read table',
+  columns: [
+    { name: 'Datum', title: 'Datum', type: 'Date,DateTime' },
+    { name: 'Teilnehmer', title: 'Teilnehmer', type: 'Any' },
+    { name: 'Werte', title: 'Zahlenspalten', type: 'Numeric,Int', allowMultiple: true },
+  ],
+});
+
+// Grist liefert Datum/DatumUhrzeit als Sekunden seit 1970
+function toDate(v) {
+  if (v instanceof Date) return v;
+  if (typeof v !== 'number') return null;
+  return new Date(v < 1e11 ? v * 1000 : v);
+}
+
+// ISO-Kalenderwoche als Schlüssel "2026-KW40" plus Montag der Woche
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7;
+  const monday = new Date(t); monday.setUTCDate(t.getUTCDate() - day + 1);
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const year = t.getUTCFullYear();
+  const wk = Math.ceil(((t - Date.UTC(year, 0, 1)) / 864e5 + 1) / 7);
+  return { key: year + '-KW' + String(wk).padStart(2, '0'), monday };
+}
+
+const fmt = d => d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
+const num = n => n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+
+grist.onRecords((records, mappings) => {
+  const m = grist.mapColumnNames(records);
+  if (!m || !mappings) return;
+  labels = [].concat(mappings.Werte || []);
+  rows = [];
+  for (const r of m) {
+    const d = toDate(r.Datum);
+    if (!d) continue;
+    const w = isoWeek(d);
+    rows.push({ week: w.key, monday: w.monday, name: String(r.Teilnehmer ?? '–'),
+                vals: [].concat(r.Werte ?? []).map(Number) });
+  }
+  const map = new Map();
+  rows.forEach(r => map.set(r.week, r.monday));
+  weeks = [...map.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1);
+  if (!weeks.some(w => w[0] === current)) current = weeks.length ? weeks[weeks.length - 1][0] : null;
+  render();
+});
+
+function render() {
+  const sel = $('week');
+  sel.innerHTML = weeks.map(([k, mon]) => {
+    const sun = new Date(mon); sun.setUTCDate(mon.getUTCDate() + 6);
+    return `<option value="${k}" ${k === current ? 'selected' : ''}>${k.replace('-', ' ')} (${fmt(mon)}–${fmt(sun)})</option>`;
+  }).join('');
+  const out = $('out');
+  if (!current) { out.innerHTML = '<div class="empty">Keine Daten vorhanden.</div>'; return; }
+
+  const sel_rows = rows.filter(r => r.week === current);
+  const sums = new Map();
+  sel_rows.forEach(r => {
+    const s = sums.get(r.name) || labels.map(() => 0);
+    r.vals.forEach((v, i) => { s[i] += isNaN(v) ? 0 : v; });
+    sums.set(r.name, s);
+  });
+  const total = labels.map((_, i) => [...sums.values()].reduce((a, s) => a + s[i], 0));
+  const head = '<th>Teilnehmer</th>' + labels.map(l => `<th>${l}</th>`).join('');
+  const body = [...sums.entries()].sort().map(([n, s]) =>
+    `<tr><td>${n}</td>${s.map(v => `<td>${num(v)}</td>`).join('')}</tr>`).join('');
+  out.innerHTML = `<h2>Summen pro Teilnehmer</h2>
+    <div class="scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody>
+    <tfoot><tr><td>Gesamt</td>${total.map(v => `<td>${num(v)}</td>`).join('')}</tr></tfoot></table></div>
+    <h2>${sel_rows.length} Einträge</h2>`;
+}
+
+$('week').onchange = e => { current = e.target.value; render(); };
+$('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
+function step(d) {
+  const i = weeks.findIndex(w => w[0] === current) + d;
+  if (i >= 0 && i < weeks.length) { current = weeks[i][0]; render(); }
+}
+</script>
+</body>
+</html>
