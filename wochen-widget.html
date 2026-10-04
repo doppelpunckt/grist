@@ -55,7 +55,7 @@ grist.ready({
   columns: [
     { name: 'Datum', title: 'Datum', type: 'Date,DateTime' },
     { name: 'Teilnehmer', title: 'Teilnehmer', type: 'Any' },
-    { name: 'Werte', title: 'Zahlenspalten', type: 'Numeric,Int', allowMultiple: true },
+    { name: 'Werte', title: 'Zahlenspalten', type: 'Numeric,Int', allowMultiple: true, optional: true },
   ],
 });
 
@@ -82,8 +82,9 @@ const num = n => n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
 
 grist.onRecords((records, mappings) => {
   const m = grist.mapColumnNames(records);
-  if (!m || !mappings) return;
-  labels = [].concat(mappings.Werte || []);
+  if (!m) { $('out').innerHTML = '<div class="empty">Bitte Datum und Teilnehmer zuordnen.</div>'; return; }
+  labels = [].concat((mappings && mappings.Werte) || []);
+  window.diag = records.length + ' Zeilen, Beispiel Datum: ' + typeof m[0]?.Datum + ' ' + String(m[0]?.Datum);
   rows = [];
   for (const r of m) {
     const d = toDate(r.Datum);
@@ -106,7 +107,7 @@ function render() {
     return `<option value="${k}" ${k === current ? 'selected' : ''}>${k.replace('-', ' ')} (${fmt(mon)}–${fmt(sun)})</option>`;
   }).join('');
   const out = $('out');
-  if (!current) { out.innerHTML = '<div class="empty">Keine Daten vorhanden.</div>'; return; }
+  if (!current) { out.innerHTML = '<div class="empty">Keine Daten vorhanden.<br><small>' + (window.diag || '') + '</small></div>'; return; }
 
   const sel_rows = rows.filter(r => r.week === current);
   const sums = new Map();
