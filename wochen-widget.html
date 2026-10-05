@@ -41,7 +41,9 @@
   table { border-collapse: collapse; width: 100%; font-size: 15px; }
   th, td { padding: 9px 12px; text-align: right; white-space: nowrap;
     border-bottom: 1px solid var(--line); }
-  th:first-child, td:first-child { text-align: left; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  td.rk { font-weight: 700; color: var(--accent); width: 1%; }
+  th:first-child, td:first-child { padding-right: 0; }
   th { font-weight: 600; color: var(--muted); font-size: 13px; }
   tr:last-child td { border-bottom: 0; }
   tfoot td { font-weight: 700; border-top: 2px solid var(--accent); }
@@ -91,7 +93,8 @@ grist.ready({
     { name: 'Datum', title: 'Datum', type: 'Date,DateTime' },
     { name: 'Teilnehmer', title: 'Teilnehmer', type: 'Any' },
     { name: 'Art', title: 'Bewegungsart', type: 'Any', optional: true },
-    { name: 'Werte', title: 'Zahlenspalten', type: 'Numeric,Int', allowMultiple: true, optional: true },
+    { name: 'Strecke', title: 'Strecke (Ranking)', type: 'Numeric,Int', optional: true },
+    { name: 'Werte', title: 'Weitere Zahlenspalten', type: 'Numeric,Int', allowMultiple: true, optional: true },
   ],
 });
 
@@ -119,7 +122,8 @@ const num = n => n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
 grist.onRecords((records, mappings) => {
   const m = grist.mapColumnNames(records);
   if (!m) { $('out').innerHTML = '<div class="empty">Bitte Datum und Teilnehmer zuordnen.</div>'; return; }
-  labels = [].concat((mappings && mappings.Werte) || []);
+  const hasS = !!(mappings && mappings.Strecke);
+  labels = (hasS ? [mappings.Strecke] : []).concat((mappings && mappings.Werte) || []);
   window.diag = records.length + ' Zeilen, Beispiel Datum: ' + typeof m[0]?.Datum + ' ' + String(m[0]?.Datum);
   rows = [];
   for (const r of m) {
@@ -127,7 +131,7 @@ grist.onRecords((records, mappings) => {
     if (!d) continue;
     const w = isoWeek(d);
     rows.push({ week: w.key, monday: w.monday, name: String(r.Teilnehmer ?? '–'), art: sportKey(r.Art),
-                vals: [].concat(r.Werte ?? []).map(Number) });
+                vals: (hasS ? [r.Strecke] : []).concat(r.Werte ?? []).map(Number) });
   }
   const map = new Map();
   rows.forEach(r => map.set(r.week, r.monday));
@@ -154,12 +158,16 @@ function render() {
     sums.set(r.name, s);
   });
   const total = labels.map((_, i) => [...sums.values()].reduce((a, s) => a + s[i], 0));
-  const head = '<th>Teilnehmer</th>' + labels.map(l => `<th>${l}</th>`).join('');
-  const body = [...sums.entries()].sort().map(([n, s]) =>
-    `<tr><td>${n}</td>${s.map(v => `<td>${num(v)}</td>`).join('')}</tr>`).join('');
-  out.innerHTML = `<h2>Summen pro Teilnehmer</h2>
+  const head = '<th>Platz</th><th>Teilnehmer</th>' + labels.map(l => `<th>${l}</th>`).join('');
+  const sorted = [...sums.entries()].sort((a, b) => (b[1][0] || 0) - (a[1][0] || 0) || a[0].localeCompare(b[0]));
+  let rank = 0;
+  const body = sorted.map(([n, s], i) => {
+    if (i === 0 || s[0] !== sorted[i - 1][1][0]) rank = i + 1;   // gleiche Werte = gleicher Platz
+    return `<tr><td class="rk">${rank}.</td><td>${n}</td>${s.map(v => `<td>${num(v)}</td>`).join('')}</tr>`;
+  }).join('');
+  out.innerHTML = `<h2>Ranking nach ${labels[0] || 'Summe'}</h2>
     <div class="scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody>
-    <tfoot><tr><td>Gesamt</td>${total.map(v => `<td>${num(v)}</td>`).join('')}</tr></tfoot></table></div>
+    <tfoot><tr><td></td><td>Gesamt</td>${total.map(v => `<td>${num(v)}</td>`).join('')}</tr></tfoot></table></div>
     <h2>${sel_rows.length} Einträge</h2>`;
 }
 
