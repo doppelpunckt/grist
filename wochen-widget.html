@@ -25,6 +25,16 @@
   .nav select { flex: 1; min-width: 0; font-size: 17px; padding: 12px;
     border: 1px solid var(--line); border-radius: 10px;
     background: var(--card); color: var(--ink); }
+  .sports { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 4px; }
+  .sport { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: none; border: 0; color: var(--muted); font-size: 12px; padding: 0; }
+  .sport .ico { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center;
+    border: 2px solid var(--line); background: var(--card); transition: background .15s; }
+  .sport svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round; }
+  .sport svg .f { fill: currentColor; stroke: none; }
+  .sport[aria-pressed="true"] { color: var(--ink); }
+  .sport[aria-pressed="true"] .ico { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   h2 { font-size: 15px; font-weight: 600; margin: 16px 2px 6px; color: var(--muted); }
   .scroll { overflow-x: auto; background: var(--card);
     border: 1px solid var(--line); border-radius: 10px; }
@@ -44,17 +54,43 @@
   <select id="week" aria-label="Woche wählen"></select>
   <button id="next" aria-label="Nächste Woche">›</button>
 </div>
+<div class="sports" id="sports"></div>
 <div id="out"><div class="empty">Spalten zuordnen (rechtes Panel) …</div></div>
 
 <script>
 let rows = [], labels = [], weeks = [], current = null;
 const $ = id => document.getElementById(id);
 
+const SPORTS = [
+  { key: 'rad', label: 'Radfahren', re: /rad|bike|cycl/i,
+    svg: '<circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-7h5M10 9l3 7M13 16l2.5-7M15.5 9l-1-2.5h2.5"/>' },
+  { key: 'lauf', label: 'Laufen', re: /lauf|run|jog/i,
+    svg: '<circle class="f" cx="15" cy="5" r="1.9"/><path d="M14 8l-3 6M14 8l3 3M14 8l-4 1M11 14l4 2-1 4M11 14l-3 4h-3"/>' },
+  { key: 'geh', label: 'Gehen', re: /geh|wander|walk/i,
+    svg: '<circle class="f" cx="12" cy="5" r="1.9"/><path d="M12 8v6M12 9l-3 3M12 9l3 3M12 14l-2.5 6M12 14l2.5 6"/>' },
+  { key: 'schwimm', label: 'Schwimmen', re: /schwimm|swim/i,
+    svg: '<circle class="f" cx="16" cy="7" r="1.9"/><path d="M4 12l6-3 4 1M3 16q2.5-2 5 0t5 0 5 0M3 20q2.5-2 5 0t5 0 5 0"/>' },
+];
+const active = Object.fromEntries(SPORTS.map(x => [x.key, true]));
+function sportKey(v) {
+  const t = String(v ?? '');
+  const hit = SPORTS.find(x => x.re.test(t));
+  return hit ? hit.key : '';
+}
+$('sports').innerHTML = SPORTS.map(x =>
+  `<button class="sport" data-k="${x.key}" aria-pressed="true" aria-label="${x.label}">
+     <span class="ico"><svg viewBox="0 0 24 24">${x.svg}</svg></span>${x.label}</button>`).join('');
+document.querySelectorAll('.sport').forEach(b => b.onclick = () => {
+  const k = b.dataset.k; active[k] = !active[k];
+  b.setAttribute('aria-pressed', active[k]); render();
+});
+
 grist.ready({
   requiredAccess: 'read table',
   columns: [
     { name: 'Datum', title: 'Datum', type: 'Date,DateTime' },
     { name: 'Teilnehmer', title: 'Teilnehmer', type: 'Any' },
+    { name: 'Art', title: 'Bewegungsart', type: 'Any', optional: true },
     { name: 'Werte', title: 'Zahlenspalten', type: 'Numeric,Int', allowMultiple: true, optional: true },
   ],
 });
@@ -90,7 +126,7 @@ grist.onRecords((records, mappings) => {
     const d = toDate(r.Datum);
     if (!d) continue;
     const w = isoWeek(d);
-    rows.push({ week: w.key, monday: w.monday, name: String(r.Teilnehmer ?? '–'),
+    rows.push({ week: w.key, monday: w.monday, name: String(r.Teilnehmer ?? '–'), art: sportKey(r.Art),
                 vals: [].concat(r.Werte ?? []).map(Number) });
   }
   const map = new Map();
@@ -109,7 +145,8 @@ function render() {
   const out = $('out');
   if (!current) { out.innerHTML = '<div class="empty">Keine Daten vorhanden.<br><small>' + (window.diag || '') + '</small></div>'; return; }
 
-  const sel_rows = rows.filter(r => r.week === current);
+  const allOn = SPORTS.every(x => active[x.key]);
+  const sel_rows = rows.filter(r => r.week === current && (allOn || active[r.art]));
   const sums = new Map();
   sel_rows.forEach(r => {
     const s = sums.get(r.name) || labels.map(() => 0);
