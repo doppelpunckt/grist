@@ -229,12 +229,15 @@ $('save').onclick = async () => {
 // Angemeldete Person ermitteln: Hilfstabelle "Sitzung" mit Auslöserformel user.Email
 async function whoAmI() {
   try {
-    const res = await grist.docApi.applyUserActions([['AddRecord', 'Sitzung', null, {}]]);
+    const tables = await grist.docApi.listTables();
+    const tid = tables.find(x => /^sitzung/i.test(x));
+    if (!tid) throw new Error('Keine Tabelle "Sitzung" gefunden. Vorhandene Tabellen: ' + tables.join(', '));
+    const res = await grist.docApi.applyUserActions([['AddRecord', tid, null, {}]]);
     const id = res.retValues[0];
-    const t = await grist.docApi.fetchTable('Sitzung');
+    const t = await grist.docApi.fetchTable(tid);
     const i = t.id.indexOf(id);
     if (i >= 0) me = { email: String(t.Email?.[i] || '').toLowerCase(), name: String(t.Name?.[i] || '') };
-    await grist.docApi.applyUserActions([['RemoveRecord', 'Sitzung', id]]);
+    await grist.docApi.applyUserActions([['RemoveRecord', tid, id]]);
     $('status').textContent = 'Angemeldet: ' + JSON.stringify(me);
   } catch (e) { console.warn('Identität nicht ermittelbar:', e); $('status').textContent = 'Identität nicht ermittelbar: ' + (e.message || e); }
   render();
