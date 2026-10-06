@@ -35,6 +35,19 @@
   .sport svg .f { fill: currentColor; stroke: none; }
   .sport[aria-pressed="true"] { color: var(--ink); }
   .sport[aria-pressed="true"] .ico { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  tr.me td { font-weight: 700; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .add { width: 100%; margin: 10px 0 4px; padding: 12px; font-size: 16px; font-weight: 600;
+    border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-ink); }
+  .form { display: grid; gap: 10px; padding: 12px; margin: 8px 0; background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; }
+  .form[hidden] { display: none; }
+  .form input, .form select { font-size: 17px; padding: 12px; width: 100%;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); }
+  .form .row { display: flex; gap: 8px; }
+  .form .row button { flex: 1; padding: 12px; font-size: 16px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  .form .row button.ok { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .form small { color: var(--muted); }
   h2 { font-size: 15px; font-weight: 600; margin: 16px 2px 6px; color: var(--muted); }
   .scroll { overflow-x: auto; background: var(--card);
     border: 1px solid var(--line); border-radius: 10px; }
@@ -57,10 +70,18 @@
   <button id="next" aria-label="Nächste Woche">›</button>
 </div>
 <div class="sports" id="sports"></div>
+<button class="add" id="add">＋ Eintrag erfassen</button>
+<div class="form" id="form" hidden>
+  <input id="dist" type="text" inputmode="decimal" placeholder="Strecke" autocomplete="off">
+  <select id="art"></select>
+  <small id="today"></small>
+  <div class="row"><button id="cancel">Abbrechen</button><button class="ok" id="save">Speichern</button></div>
+  <small id="msg"></small>
+</div>
 <div id="out"><div class="empty">Spalten zuordnen (rechtes Panel) …</div></div>
 
 <script>
-let rows = [], labels = [], weeks = [], current = null;
+let rows = [], labels = [], weeks = [], current = null, lastMap = null, me = null;
 const $ = id => document.getElementById(id);
 
 const SPORTS = [
@@ -88,10 +109,11 @@ document.querySelectorAll('.sport').forEach(b => b.onclick = () => {
 });
 
 grist.ready({
-  requiredAccess: 'read table',
+  requiredAccess: 'full',
   columns: [
     { name: 'Datum', title: 'Datum', type: 'Date,DateTime' },
     { name: 'Teilnehmer', title: 'Teilnehmer', type: 'Any' },
+    { name: 'Email', title: 'E-Mail des Erfassers', type: 'Any', optional: true },
     { name: 'Art', title: 'Bewegungsart', type: 'Any', optional: true },
     { name: 'Strecke', title: 'Strecke (Ranking)', type: 'Numeric,Int', optional: true },
     { name: 'Werte', title: 'Weitere Zahlenspalten', type: 'Numeric,Int', allowMultiple: true, optional: true },
@@ -120,6 +142,7 @@ const fmt = d => d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit
 const num = n => n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
 
 grist.onRecords((records, mappings) => {
+  lastMap = mappings;
   const m = grist.mapColumnNames(records);
   if (!m) { $('out').innerHTML = '<div class="empty">Bitte Datum und Teilnehmer zuordnen.</div>'; return; }
   const hasS = !!(mappings && mappings.Strecke);
@@ -130,7 +153,7 @@ grist.onRecords((records, mappings) => {
     const d = toDate(r.Datum);
     if (!d) continue;
     const w = isoWeek(d);
-    rows.push({ week: w.key, monday: w.monday, name: String(r.Teilnehmer ?? '–'), art: sportKey(r.Art),
+    rows.push({ week: w.key, monday: w.monday, name: String(r.Teilnehmer ?? '–'), art: sportKey(r.Art), email: String(r.Email ?? '').toLowerCase(),
                 vals: (hasS ? [r.Strecke] : []).concat(r.Werte ?? []).map(Number) });
   }
   const map = new Map();
@@ -157,13 +180,16 @@ function render() {
     r.vals.forEach((v, i) => { s[i] += isNaN(v) ? 0 : v; });
     sums.set(r.name, s);
   });
+  const isMe = r => me && ((me.email && r.email === me.email) ||
+    (me.name && r.name.toLowerCase() === me.name.toLowerCase()));
+  const mine = new Set(sel_rows.filter(isMe).map(r => r.name));
   const total = labels.map((_, i) => [...sums.values()].reduce((a, s) => a + s[i], 0));
   const head = '<th>Platz</th><th>Teilnehmer</th>' + labels.map(l => `<th>${l}</th>`).join('');
   const sorted = [...sums.entries()].sort((a, b) => (b[1][0] || 0) - (a[1][0] || 0) || a[0].localeCompare(b[0]));
   let rank = 0;
   const body = sorted.map(([n, s], i) => {
     if (i === 0 || s[0] !== sorted[i - 1][1][0]) rank = i + 1;   // gleiche Werte = gleicher Platz
-    return `<tr><td class="rk">${rank}.</td><td>${n}</td>${s.map(v => `<td>${num(v)}</td>`).join('')}</tr>`;
+    return `<tr${mine.has(n) ? ' class="me"' : ''}><td class="rk">${rank}.</td><td>${n}</td>${s.map(v => `<td>${num(v)}</td>`).join('')}</tr>`;
   }).join('');
   out.innerHTML = `<h2>Ranking nach ${labels[0] || 'Summe'}</h2>
     <div class="scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody>
@@ -171,9 +197,47 @@ function render() {
     <h2>${sel_rows.length} Einträge</h2>`;
 }
 
+$('art').innerHTML = SPORTS.map(x => `<option>${x.label}</option>`).join('');
+$('add').onclick = () => {
+  $('form').hidden = !$('form').hidden;
+  $('today').textContent = 'Datum: heute, ' + new Date().toLocaleDateString('de-DE');
+  $('msg').textContent = '';
+  if (!$('form').hidden) $('dist').focus();
+};
+$('cancel').onclick = () => { $('form').hidden = true; };
+$('save').onclick = async () => {
+  const v = parseFloat($('dist').value.replace(',', '.'));
+  if (!(v > 0)) { $('msg').textContent = 'Bitte eine Strecke eingeben.'; return; }
+  if (!lastMap || !lastMap.Strecke) { $('msg').textContent = 'Bitte zuerst die Spalte Strecke zuordnen.'; return; }
+  const rec = { Datum: Math.floor(Date.now() / 1000), Strecke: v };
+  if (lastMap.Art) rec.Art = $('art').value;
+  try {
+    $('save').disabled = true;
+    await grist.getTable().create({ fields: grist.mapColumnNamesBack(rec) });
+    current = isoWeek(new Date()).key;
+    $('dist').value = ''; $('form').hidden = true;
+  } catch (e) {
+    $('msg').textContent = 'Fehler: ' + (e.message || e);
+  } finally { $('save').disabled = false; }
+};
+
+// Angemeldete Person ermitteln: Hilfstabelle "Sitzung" mit Auslöserformel user.Email
+async function whoAmI() {
+  try {
+    const res = await grist.docApi.applyUserActions([['AddRecord', 'Sitzung', null, {}]]);
+    const id = res.retValues[0];
+    const t = await grist.docApi.fetchTable('Sitzung');
+    const i = t.id.indexOf(id);
+    if (i >= 0) me = { email: String(t.Email?.[i] || '').toLowerCase(), name: String(t.Name?.[i] || '') };
+    await grist.docApi.applyUserActions([['RemoveRecord', 'Sitzung', id]]);
+  } catch (e) { console.warn('Identität nicht ermittelbar:', e); }
+  render();
+}
+whoAmI();
+
 $('week').onchange = e => { current = e.target.value; render(); };
-$('next').onclick = () => step(1);
 $('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
 function step(d) {
   const i = weeks.findIndex(w => w[0] === current) + d;
   if (i >= 0 && i < weeks.length) { current = weeks[i][0]; render(); }
