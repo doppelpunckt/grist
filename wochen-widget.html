@@ -172,8 +172,8 @@ function render() {
 }
 
 $('week').onchange = e => { current = e.target.value; render(); };
-$('prev').onclick = () => step(-1);
 $('next').onclick = () => step(1);
+$('prev').onclick = () => step(-1);
 function step(d) {
   const i = weeks.findIndex(w => w[0] === current) + d;
   if (i >= 0 && i < weeks.length) { current = weeks[i][0]; render(); }
