@@ -71,6 +71,7 @@
 </div>
 <div class="sports" id="sports"></div>
 <button class="add" id="add">＋ Eintrag erfassen</button>
+<small id="status" style="color:var(--muted);display:block;margin:4px 2px"></small>
 <div class="form" id="form" hidden>
   <input id="dist" type="text" inputmode="decimal" placeholder="Strecke" autocomplete="off">
   <select id="art"></select>
@@ -215,11 +216,13 @@ $('save').onclick = async () => {
   if (lastMap.Art) fields[lastMap.Art] = $('art').value;
   try {
     $('save').disabled = true;
-    await grist.getTable().create({ fields });
+    const res = await grist.getTable().create({ fields });
+    $('status').textContent = 'Gespeichert: ' + JSON.stringify(res) + ' Felder: ' + JSON.stringify(fields);
     current = isoWeek(new Date()).key;
     $('dist').value = ''; $('form').hidden = true;
   } catch (e) {
     $('msg').textContent = 'Fehler: ' + (e.message || e);
+    $('status').textContent = 'Speichern fehlgeschlagen: ' + (e.message || e);
   } finally { $('save').disabled = false; }
 };
 
@@ -232,7 +235,8 @@ async function whoAmI() {
     const i = t.id.indexOf(id);
     if (i >= 0) me = { email: String(t.Email?.[i] || '').toLowerCase(), name: String(t.Name?.[i] || '') };
     await grist.docApi.applyUserActions([['RemoveRecord', 'Sitzung', id]]);
-  } catch (e) { console.warn('Identität nicht ermittelbar:', e); }
+    $('status').textContent = 'Angemeldet: ' + JSON.stringify(me);
+  } catch (e) { console.warn('Identität nicht ermittelbar:', e); $('status').textContent = 'Identität nicht ermittelbar: ' + (e.message || e); }
   render();
 }
 whoAmI();
