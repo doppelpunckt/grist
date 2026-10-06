@@ -209,11 +209,13 @@ $('save').onclick = async () => {
   const v = parseFloat($('dist').value.replace(',', '.'));
   if (!(v > 0)) { $('msg').textContent = 'Bitte eine Strecke eingeben.'; return; }
   if (!lastMap || !lastMap.Strecke) { $('msg').textContent = 'Bitte zuerst die Spalte Strecke zuordnen.'; return; }
-  const rec = { Datum: Math.floor(Date.now() / 1000), Strecke: v };
-  if (lastMap.Art) rec.Art = $('art').value;
+  const fields = {};
+  if (lastMap.Datum) fields[lastMap.Datum] = Math.floor(Date.now() / 1000);
+  fields[lastMap.Strecke] = v;
+  if (lastMap.Art) fields[lastMap.Art] = $('art').value;
   try {
     $('save').disabled = true;
-    await grist.getTable().create({ fields: grist.mapColumnNamesBack(rec) });
+    await grist.getTable().create({ fields });
     current = isoWeek(new Date()).key;
     $('dist').value = ''; $('form').hidden = true;
   } catch (e) {
