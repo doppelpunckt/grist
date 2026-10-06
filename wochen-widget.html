@@ -146,6 +146,13 @@ function mondayOf(key) {
   mon.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() || 7) - 1) + (+k[2] - 1) * 7);
   return mon;
 }
+// akzeptiert "2026-KW40" oder nur die Wochennummer (dann gilt das aktuelle Jahr)
+function parseWeek(v) {
+  let k = String(v ?? '').trim();
+  if (/^\d{1,2}$/.test(k)) k = new Date().getFullYear() + '-KW' + k.padStart(2, '0');
+  const monday = mondayOf(k);
+  return monday ? { key: k, monday } : null;
+}
 const fmt = d => d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
 const num = n => n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
 
@@ -155,13 +162,11 @@ grist.onRecords((records, mappings) => {
   if (!m) { $('out').innerHTML = '<div class="empty">Bitte Datum und Teilnehmer zuordnen.</div>'; return; }
   const hasS = !!(mappings && mappings.Strecke);
   labels = (hasS ? [mappings.Strecke] : []).concat((mappings && mappings.Werte) || []);
-  window.diag = records.length + ' Zeilen, Beispiel Datum: ' + String(m[0]?.Woche);
+  window.diag = records.length + ' Zeilen, Beispiel Woche: ' + String(m[0]?.Woche);
   rows = [];
   for (const r of m) {
-    const key = String(r.Woche ?? '');
-    const monday = mondayOf(key);
-    if (!monday) continue;
-    const w = { key, monday };
+    const w = parseWeek(r.Woche);
+    if (!w) continue;
     rows.push({ week: w.key, monday: w.monday, name: String(r.Teilnehmer ?? '–'), art: sportKey(r.Art), email: String(r.Email ?? '').toLowerCase(),
                 vals: (hasS ? [r.Strecke] : []).concat(r.Werte ?? []).map(Number) });
   }
