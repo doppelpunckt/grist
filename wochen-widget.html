@@ -217,7 +217,10 @@ $('save').onclick = async () => {
   try {
     $('save').disabled = true;
     const res = await grist.getTable().create({ fields });
-    $('status').textContent = 'Gespeichert: ' + JSON.stringify(res) + ' Felder: ' + JSON.stringify(fields);
+    const tid = await grist.selectedTable.getTableId();
+    const t = await grist.docApi.fetchTable(tid);
+    $('status').textContent = 'Gespeichert in Tabelle ' + tid + ' (' + t.id.length + ' Zeilen), Zeile ' + res.id +
+      (t.id.includes(res.id) ? ' vorhanden' : ' NICHT vorhanden') + '. Widget zeigt ' + rows.length + ' Zeilen.';
     current = isoWeek(new Date()).key;
     $('dist').value = ''; $('form').hidden = true;
   } catch (e) {
